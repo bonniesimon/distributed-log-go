@@ -1,19 +1,44 @@
 package ingest
 
 import (
+	"encoding/json"
 	"fmt"
-	"io"
 	"net/http"
+	"time"
 )
 
-func PostHandler(w http.ResponseWriter, r *http.Request) {
-	body, err := io.ReadAll(r.Body)
+type LogEntry struct {
+	Timestamp uint64 `json:"timestamp"`
+	Service   string `json:"service"`
+	Level     string `json:"level,omitempty"`
+	Message   string `json:"message"`
+}
 
-	if err != nil {
-		http.Error(w, "Error reading request body", http.StatusInternalServerError)
+func PostHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
 
-	fmt.Printf("Received POST request with body: %s\n", body)
+	var logs []LogEntry
+
+	if err := json.NewDecoder(r.Body).Decode(&logs); err != nil {
+		http.Error(w, "invalid json: "+err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	for _, entry := range logs {
+		logPrint(entry, time.Now().UnixMilli())
+	}
+
 	fmt.Fprintf(w, "POST request received successfully!")
+}
+
+func logPrint(entry LogEntry, receivedAt int64) {
+	fmt.Println(
+		"[INGEST]",
+		"received_at=", receivedAt,
+		"service=", entry.Service,
+		"msg=", entry.Message,
+	)
 }
