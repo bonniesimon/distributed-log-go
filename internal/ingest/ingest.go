@@ -57,7 +57,9 @@ func LogIngestHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	for _, log := range enrichedLogs {
-		_ = storageURLBasedOnService(log.Service)
+		partition := partitionForKey(log.Service)
+		storageNodeURL := storageNodeURLBasedOnPartition(partition)
+		println("partition=", partition, "node=", storageNodeURL)
 	}
 
 	for _, log := range enrichedLogs {
@@ -77,13 +79,15 @@ func enrich(incomingLog IncomingLogBody, clientIP string) LogEntry {
 	}
 }
 
-func storageURLBasedOnService(key string) string {
+func partitionForKey(key string) int {
 	h := fnv.New32a()
 	h.Write([]byte(key))
 
-	partitionNumber := int(h.Sum32() % partitionCount)
+	return int(h.Sum32() % partitionCount)
+}
 
-	switch partitionNumber {
+func storageNodeURLBasedOnPartition(partition int) string {
+	switch partition {
 	case 0, 1:
 		return "http://localhost:8081"
 	case 2, 3:

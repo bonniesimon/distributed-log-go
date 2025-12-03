@@ -1,5 +1,6 @@
 - [x] Create Log struct
 - [x] Enrich the logs with new details. This is something that ingest service does.
-- [ ] Paritioning
+- [x] Paritioning
+- [ ] Create the storage node
 - [ ] Sending or forwarding to storage nodes based on partition. Eg: /v1/storage?partition=x
 - [ ] Add send the logs to storage nodes
