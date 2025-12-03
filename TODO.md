@@ -1,3 +1,3 @@
-- [ ] Create Log struct
+- [x] Create Log struct
 - [ ] Enrich the logs with new details. This is something that ingest service does.
 - [ ] Add send the logs to storage nodes

@@ -27,6 +27,11 @@ func PostHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if len(logs) == 0 {
+		http.Error(w, "empty body", http.StatusBadRequest)
+		return
+	}
+
 	for _, entry := range logs {
 		logPrint(entry, time.Now().UnixMilli())
 	}
