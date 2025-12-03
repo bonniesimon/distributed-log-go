@@ -3,10 +3,13 @@ package ingest
 import (
 	"encoding/json"
 	"fmt"
+	"hash/fnv"
 	"net"
 	"net/http"
 	"time"
 )
+
+const partitionCount = 4
 
 type IncomingLogBody struct {
 	Timestamp uint64            `json:"timestamp"`
@@ -27,7 +30,7 @@ type IngestResponse struct {
 	Received int `json:"received"`
 }
 
-func PostHandler(w http.ResponseWriter, r *http.Request) {
+func LogIngestHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
@@ -54,6 +57,10 @@ func PostHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	for _, log := range enrichedLogs {
+		_ = storageURLBasedOnService(log.Service)
+	}
+
+	for _, log := range enrichedLogs {
 		logPrint(log)
 	}
 
@@ -67,6 +74,22 @@ func enrich(incomingLog IncomingLogBody, clientIP string) LogEntry {
 		ReceivedAt:      time.Now().UnixMilli(),
 		IngestedNodeId:  "id-string-1",
 		ClientIP:        clientIP,
+	}
+}
+
+func storageURLBasedOnService(key string) string {
+	h := fnv.New32a()
+	h.Write([]byte(key))
+
+	partitionNumber := int(h.Sum32() % partitionCount)
+
+	switch partitionNumber {
+	case 0, 1:
+		return "http://localhost:8081"
+	case 2, 3:
+		return "http://localhost:8082"
+	default:
+		return "http://localhost:8081"
 	}
 }
 
