@@ -1,0 +1,3 @@
+ingest: go run ./cmd/ingest/main.go
+storage1: PORT=8081 go run ./cmd/storage
+storage2: PORT=8082 go run ./cmd/storage

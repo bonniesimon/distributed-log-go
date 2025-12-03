@@ -1,11 +1,13 @@
 package ingest
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"hash/fnv"
 	"net"
 	"net/http"
+	"strconv"
 	"time"
 )
 
@@ -60,14 +62,46 @@ func LogIngestHandler(w http.ResponseWriter, r *http.Request) {
 		partition := partitionForKey(log.Service)
 		storageNodeURL := storageNodeURLBasedOnPartition(partition)
 		println("partition=", partition, "node=", storageNodeURL)
-	}
-
-	for _, log := range enrichedLogs {
 		logPrint(log)
+
+		err := sendToStorage(partition, storageNodeURL, log)
+		if err != nil {
+			fmt.Println("Error: ", err)
+		}
 	}
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(IngestResponse{Received: len(enrichedLogs)})
+}
+
+func sendToStorage(partition int, nodeURL string, log LogEntry) error {
+	payload, err := json.Marshal([]LogEntry{log})
+	if err != nil {
+		return err
+	}
+
+	url := nodeURL + "/v1/storage?partition=" + strconv.Itoa(partition)
+	req, err := http.NewRequest(http.MethodPost, url, bytes.NewReader(payload))
+	if err != nil {
+		return err
+	}
+
+	req.Header.Set("Content-Type", "application/json")
+
+	client := &http.Client{}
+
+	response, err := client.Do(req)
+	if err != nil {
+		return err
+	}
+
+	defer response.Body.Close()
+
+	if response.StatusCode < 200 || response.StatusCode >= 300 {
+		return fmt.Errorf("storage returned %d", response.StatusCode)
+	}
+
+	return nil
 }
 
 func enrich(incomingLog IncomingLogBody, clientIP string) LogEntry {
