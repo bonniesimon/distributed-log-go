@@ -3,15 +3,24 @@ package ingest
 import (
 	"encoding/json"
 	"fmt"
+	"net"
 	"net/http"
 	"time"
 )
 
+type IncomingLogBody struct {
+	Timestamp uint64            `json:"timestamp"`
+	Service   string            `json:"service"`
+	Level     string            `json:"level,omitempty"`
+	Message   string            `json:"message"`
+	Labels    map[string]string `json:"labels,omitempty"`
+}
+
 type LogEntry struct {
-	Timestamp uint64 `json:"timestamp"`
-	Service   string `json:"service"`
-	Level     string `json:"level,omitempty"`
-	Message   string `json:"message"`
+	IncomingLogBody
+	ReceivedAt     int64  `json:"received_at"`
+	IngestedNodeId string `json:"ingested_node_id"`
+	ClientIP       string `json:"client_ip"`
 }
 
 func PostHandler(w http.ResponseWriter, r *http.Request) {
@@ -20,30 +29,56 @@ func PostHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var logs []LogEntry
+	var incomingLogs []IncomingLogBody
 
-	if err := json.NewDecoder(r.Body).Decode(&logs); err != nil {
+	if err := json.NewDecoder(r.Body).Decode(&incomingLogs); err != nil {
 		http.Error(w, "invalid json: "+err.Error(), http.StatusBadRequest)
 		return
 	}
 
-	if len(logs) == 0 {
+	if len(incomingLogs) == 0 {
 		http.Error(w, "empty body", http.StatusBadRequest)
 		return
 	}
 
-	for _, entry := range logs {
-		logPrint(entry, time.Now().UnixMilli())
+	clientIP := clientIPFromRequest(r)
+	enrichedLogs := make([]LogEntry, 0, len(incomingLogs))
+
+	for _, incomingLog := range incomingLogs {
+		enriched := enrich(incomingLog, clientIP)
+		enrichedLogs = append(enrichedLogs, enriched)
+	}
+
+	for _, log := range enrichedLogs {
+		logPrint(log)
 	}
 
 	fmt.Fprintf(w, "POST request received successfully!")
 }
 
-func logPrint(entry LogEntry, receivedAt int64) {
+func enrich(incomingLog IncomingLogBody, clientIP string) LogEntry {
+	return LogEntry{
+		IncomingLogBody: incomingLog,
+		ReceivedAt:      time.Now().UnixMilli(),
+		IngestedNodeId:  "id-string-1",
+		ClientIP:        clientIP,
+	}
+}
+
+func clientIPFromRequest(r *http.Request) string {
+	ip, _, err := net.SplitHostPort(r.RemoteAddr)
+	if err != nil {
+		return "unknown"
+	}
+	return ip
+}
+
+func logPrint(log LogEntry) {
 	fmt.Println(
 		"[INGEST]",
-		"received_at=", receivedAt,
-		"service=", entry.Service,
-		"msg=", entry.Message,
+		"client_ip=", log.ClientIP,
+		"received_at=", log.ReceivedAt,
+		"service=", log.Service,
+		"msg=", log.Message,
 	)
 }
