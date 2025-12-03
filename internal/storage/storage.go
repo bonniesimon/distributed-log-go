@@ -60,7 +60,8 @@ func StoreHandler(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	fmt.Fprintf(w, "POST request received successfully!")
+	w.WriteHeader(http.StatusOK)
+	w.Write([]byte("ok"))
 }
 
 func writeLogToPartition(partition int, log LogEntry) error {
