@@ -23,6 +23,10 @@ type LogEntry struct {
 	ClientIP       string `json:"client_ip"`
 }
 
+type IngestResponse struct {
+	Received int `json:"received"`
+}
+
 func PostHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
@@ -53,7 +57,8 @@ func PostHandler(w http.ResponseWriter, r *http.Request) {
 		logPrint(log)
 	}
 
-	fmt.Fprintf(w, "POST request received successfully!")
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(IngestResponse{Received: len(enrichedLogs)})
 }
 
 func enrich(incomingLog IncomingLogBody, clientIP string) LogEntry {
