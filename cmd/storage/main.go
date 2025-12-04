@@ -10,7 +10,7 @@ import (
 )
 
 func main() {
-	http.HandleFunc("/v1/storage", storage.StoreHandler)
+	http.HandleFunc("/v1/storage", storage.HandleCreate)
 
 	fmt.Println("Storage server listening on", port())
 	log.Fatal(http.ListenAndServe(address(), nil))
