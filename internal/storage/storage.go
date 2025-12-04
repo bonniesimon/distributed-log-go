@@ -1,6 +1,7 @@
 package storage
 
 import (
+	"bufio"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -18,6 +19,46 @@ type LogEntry struct {
 	ReceivedAt     int64             `json:"received_at"`
 	IngestedNodeId string            `json:"ingested_node_id"`
 	ClientIP       string            `json:"client_ip"`
+}
+
+func HandleRead(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "method not allowed", http.StatusBadRequest)
+		return
+	}
+
+	partitionQuery := r.URL.Query().Get("partition")
+	limitQuery := r.URL.Query().Get("limit")
+
+	partition, err := strconv.Atoi(partitionQuery)
+	if err != nil || partition < 0 {
+		http.Error(w, "Invalid partition query param value", http.StatusBadRequest)
+		return
+	}
+	limit, err := strconv.Atoi(limitQuery)
+	if err != nil || limit < 0 {
+		http.Error(w, "Invalid limit query param value", http.StatusBadRequest)
+		return
+	}
+
+	partitionFilePath := partitionLogFilePath(partition)
+	logs, err := readLogFromPartition(partitionFilePath, limit)
+	if err != nil {
+		http.Error(w, fmt.Sprint("error reading log file: ", err), http.StatusBadRequest)
+		return
+	}
+
+	fmt.Println(
+		"[STORAGE/READ]",
+		"partition=", partition,
+		"limit=", limit,
+	)
+	w.WriteHeader(http.StatusOK)
+	w.Header().Set("Content-Type", "application/json")
+	if err := json.NewEncoder(w).Encode(logs); err != nil {
+		http.Error(w, "failed to encode response", http.StatusInternalServerError)
+		return
+	}
 }
 
 func HandleCreate(w http.ResponseWriter, r *http.Request) {
@@ -54,7 +95,8 @@ func HandleCreate(w http.ResponseWriter, r *http.Request) {
 	for _, log := range logs {
 		logPrint(log, partition)
 
-		err = writeLogToPartition(partition, log)
+		filePath := partitionLogFilePath(partition)
+		err = writeLogToPartition(filePath, log)
 		if err != nil {
 			fmt.Println("Error: ", err)
 		}
@@ -64,10 +106,8 @@ func HandleCreate(w http.ResponseWriter, r *http.Request) {
 	w.Write([]byte("ok"))
 }
 
-func writeLogToPartition(partition int, log LogEntry) error {
-	path := filepath.Join("tmp", fmt.Sprintf("partition-%d.log", partition))
-
-	f, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
+func writeLogToPartition(partitionFilePath string, log LogEntry) error {
+	f, err := os.OpenFile(partitionFilePath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
 	if err != nil {
 		return err
 	}
@@ -78,9 +118,50 @@ func writeLogToPartition(partition int, log LogEntry) error {
 	return enc.Encode(log)
 }
 
+func readLogFromPartition(partitionFilePath string, limit int) ([]LogEntry, error) {
+	f, err := os.Open(partitionFilePath)
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+
+	scanner := bufio.NewScanner(f)
+
+	var all []LogEntry
+	for scanner.Scan() {
+		line := scanner.Bytes()
+
+		if len(line) == 0 {
+			continue
+		}
+
+		var log LogEntry
+
+		if err := json.Unmarshal(line, &log); err != nil {
+			continue
+		}
+
+		all = append(all, log)
+	}
+
+	if err := scanner.Err(); err != nil {
+		return nil, err
+	}
+
+	if len(all) > limit {
+		all = all[len(all)-limit:]
+	}
+
+	return all, nil
+}
+
+func partitionLogFilePath(partition int) string {
+	return filepath.Join("tmp", fmt.Sprintf("partition-%d.log", partition))
+}
+
 func logPrint(log LogEntry, partition int) {
 	fmt.Println(
-		"[INGEST]",
+		"[STORAGE/CREATE]",
 		"partition=", partition,
 		"client_ip=", log.ClientIP,
 		"received_at=", log.ReceivedAt,
