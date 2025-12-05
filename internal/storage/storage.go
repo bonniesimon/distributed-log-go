@@ -10,6 +10,10 @@ import (
 	"strconv"
 )
 
+// BaseLogDir is the base directory for partition log files.
+// This can be overridden for testing.
+var BaseLogDir = "tmp"
+
 type LogEntry struct {
 	Timestamp      uint64            `json:"timestamp"`
 	Service        string            `json:"service"`
@@ -156,7 +160,7 @@ func readLogFromPartition(partitionFilePath string, limit int) ([]LogEntry, erro
 }
 
 func partitionLogFilePath(partition int) string {
-	return filepath.Join("tmp", fmt.Sprintf("partition-%d.log", partition))
+	return filepath.Join(BaseLogDir, fmt.Sprintf("partition-%d.log", partition))
 }
 
 func logPrint(log LogEntry, partition int) {

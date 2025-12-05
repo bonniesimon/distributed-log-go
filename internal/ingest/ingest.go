@@ -13,6 +13,15 @@ import (
 
 const partitionCount = 4
 
+// StorageNodeURLs maps partition numbers to storage node URLs.
+// This can be overridden for testing or configuration.
+var StorageNodeURLs = map[int]string{
+	0: "http://localhost:8081",
+	1: "http://localhost:8081",
+	2: "http://localhost:8082",
+	3: "http://localhost:8082",
+}
+
 type IncomingLogBody struct {
 	Timestamp uint64            `json:"timestamp"`
 	Service   string            `json:"service"`
@@ -121,14 +130,10 @@ func partitionForKey(key string) int {
 }
 
 func storageNodeURLBasedOnPartition(partition int) string {
-	switch partition {
-	case 0, 1:
-		return "http://localhost:8081"
-	case 2, 3:
-		return "http://localhost:8082"
-	default:
-		return "http://localhost:8081"
+	if url, ok := StorageNodeURLs[partition]; ok {
+		return url
 	}
+	return "http://localhost:8081"
 }
 
 func clientIPFromRequest(r *http.Request) string {

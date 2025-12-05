@@ -9,6 +9,18 @@ overmind start -f Procfile.dev -D
 overmind connect ingest
 ```
 
+## Testing
+
+Run all the tests
+```bash
+go test ./... -v
+```
+
+Run individual tests
+```bash
+go test ./internal/ingest/... -v
+```
+
 ## Load Generator
 
 Sends random log events to the ingest service.
