@@ -71,13 +71,21 @@ func HandleCreate(w http.ResponseWriter, r *http.Request) {
 		storageNodeURL := storageNodeURLBasedOnPartition(partition)
 
 		storageNode := StorageNode{partition: partition, URL: storageNodeURL}
-		println("partition=", storageNode.partition, "node=", storageNode.URL)
-		logPrint(log)
 
 		err := storageNode.append(log)
 		if err != nil {
 			fmt.Println("Error: ", err)
 		}
+
+		fmt.Println(
+			"[INGEST/CREATE]",
+			"client_ip=", log.ClientIP,
+			"received_at=", log.ReceivedAt,
+			"service=", log.Service,
+			"msg=", log.Message,
+			"partition=", storageNode.partition,
+			"node=", storageNode.URL,
+		)
 	}
 
 	w.Header().Set("Content-Type", "application/json")
@@ -149,14 +157,4 @@ func clientIPFromRequest(r *http.Request) string {
 		return "unknown"
 	}
 	return ip
-}
-
-func logPrint(log LogEntry) {
-	fmt.Println(
-		"[INGEST]",
-		"client_ip=", log.ClientIP,
-		"received_at=", log.ReceivedAt,
-		"service=", log.Service,
-		"msg=", log.Message,
-	)
 }
