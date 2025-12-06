@@ -1,7 +1,6 @@
 package ingest
 
 import (
-	"bytes"
 	"encoding/json"
 	"fmt"
 	"hash/fnv"
@@ -70,10 +69,12 @@ func HandleCreate(w http.ResponseWriter, r *http.Request) {
 	for _, log := range enrichedLogs {
 		partition := partitionForKey(log.Service)
 		storageNodeURL := storageNodeURLBasedOnPartition(partition)
-		println("partition=", partition, "node=", storageNodeURL)
+
+		storageNode := StorageNode{partition: partition, URL: storageNodeURL}
+		println("partition=", storageNode.partition, "node=", storageNode.URL)
 		logPrint(log)
 
-		err := sendToStorage(partition, storageNodeURL, log)
+		err := storageNode.append(log)
 		if err != nil {
 			fmt.Println("Error: ", err)
 		}
@@ -83,34 +84,40 @@ func HandleCreate(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(IngestResponse{Received: len(enrichedLogs)})
 }
 
-func sendToStorage(partition int, nodeURL string, log LogEntry) error {
-	payload, err := json.Marshal([]LogEntry{log})
+func HandleQuery(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	service := r.URL.Query().Get("service")
+	limitQuery := r.URL.Query().Get("limit")
+
+	fmt.Printf("[INGEST/QUERY] service=%s limit=%s\n", service, limitQuery)
+
+	limit, err := strconv.Atoi(limitQuery)
+	if err != nil || limit < 0 {
+		http.Error(w, "Invalid limit query param value", http.StatusBadRequest)
+		return
+	}
+
+	partition := partitionForKey(service)
+	nodeURL := storageNodeURLBasedOnPartition(partition)
+
+	storageNode := StorageNode{partition: partition, URL: nodeURL}
+
+	logs, err := storageNode.read(limit)
 	if err != nil {
-		return err
+		http.Error(w, "Error reading from storage node", http.StatusBadRequest)
+		return
 	}
 
-	url := nodeURL + "/v1/storage?partition=" + strconv.Itoa(partition)
-	req, err := http.NewRequest(http.MethodPost, url, bytes.NewReader(payload))
-	if err != nil {
-		return err
+	w.WriteHeader(http.StatusOK)
+	w.Header().Set("Content-Type", "application/json")
+	if err := json.NewEncoder(w).Encode(logs); err != nil {
+		http.Error(w, "failed to encode response", http.StatusInternalServerError)
+		return
 	}
-
-	req.Header.Set("Content-Type", "application/json")
-
-	client := &http.Client{}
-
-	response, err := client.Do(req)
-	if err != nil {
-		return err
-	}
-
-	defer response.Body.Close()
-
-	if response.StatusCode < 200 || response.StatusCode >= 300 {
-		return fmt.Errorf("storage returned %d", response.StatusCode)
-	}
-
-	return nil
 }
 
 func enrich(incomingLog IncomingLogBody, clientIP string) LogEntry {
