@@ -12,15 +12,6 @@ import (
 
 const partitionCount = 4
 
-// StorageNodeURLs maps partition numbers to storage node URLs.
-// This can be overridden for testing or configuration.
-var StorageNodeURLs = map[int]string{
-	0: "http://localhost:8081",
-	1: "http://localhost:8081",
-	2: "http://localhost:8082",
-	3: "http://localhost:8082",
-}
-
 type IncomingLogBody struct {
 	Timestamp uint64            `json:"timestamp"`
 	Service   string            `json:"service"`
@@ -68,11 +59,10 @@ func HandleCreate(w http.ResponseWriter, r *http.Request) {
 
 	for _, log := range enrichedLogs {
 		partition := partitionForKey(log.Service)
-		storageNodeURL := storageNodeURLBasedOnPartition(partition)
 
-		storageNode := StorageNode{partition: partition, URL: storageNodeURL}
+		storageNode := StorageNode{partition: partition}
 
-		err := storageNode.append(log)
+		err := storageNode.Append(log)
 		if err != nil {
 			fmt.Println("Error: ", err)
 		}
@@ -84,7 +74,7 @@ func HandleCreate(w http.ResponseWriter, r *http.Request) {
 			"service=", log.Service,
 			"msg=", log.Message,
 			"partition=", storageNode.partition,
-			"node=", storageNode.URL,
+			"node=", storageNode.URL(),
 		)
 	}
 
@@ -105,23 +95,21 @@ func HandleQuery(w http.ResponseWriter, r *http.Request) {
 
 	limit, err := strconv.Atoi(limitQuery)
 	if err != nil || limit < 0 {
-		http.Error(w, "Invalid limit query param value", http.StatusBadRequest)
+		http.Error(w, "invalid limit query param value", http.StatusBadRequest)
 		return
 	}
 
 	partition := partitionForKey(service)
-	nodeURL := storageNodeURLBasedOnPartition(partition)
+	storageNode := StorageNode{partition: partition}
 
-	storageNode := StorageNode{partition: partition, URL: nodeURL}
-
-	logs, err := storageNode.read(limit)
+	logs, err := storageNode.Read(limit)
 	if err != nil {
 		http.Error(w, "Error reading from storage node", http.StatusBadRequest)
 		return
 	}
 
-	w.WriteHeader(http.StatusOK)
 	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
 	if err := json.NewEncoder(w).Encode(logs); err != nil {
 		http.Error(w, "failed to encode response", http.StatusInternalServerError)
 		return
@@ -142,13 +130,6 @@ func partitionForKey(key string) int {
 	h.Write([]byte(key))
 
 	return int(h.Sum32() % partitionCount)
-}
-
-func storageNodeURLBasedOnPartition(partition int) string {
-	if url, ok := StorageNodeURLs[partition]; ok {
-		return url
-	}
-	return "http://localhost:8081"
 }
 
 func clientIPFromRequest(r *http.Request) string {

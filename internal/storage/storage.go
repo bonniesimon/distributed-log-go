@@ -36,12 +36,12 @@ func HandleRead(w http.ResponseWriter, r *http.Request) {
 
 	partition, err := strconv.Atoi(partitionQuery)
 	if err != nil || partition < 0 {
-		http.Error(w, "Invalid partition query param value", http.StatusBadRequest)
+		http.Error(w, "invalid partition query param value", http.StatusBadRequest)
 		return
 	}
 	limit, err := strconv.Atoi(limitQuery)
 	if err != nil || limit < 0 {
-		http.Error(w, "Invalid limit query param value", http.StatusBadRequest)
+		http.Error(w, "invalid limit query param value", http.StatusBadRequest)
 		return
 	}
 
@@ -57,8 +57,8 @@ func HandleRead(w http.ResponseWriter, r *http.Request) {
 		"partition=", partition,
 		"limit=", limit,
 	)
-	w.WriteHeader(http.StatusOK)
 	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
 	if err := json.NewEncoder(w).Encode(logs); err != nil {
 		http.Error(w, "failed to encode response", http.StatusInternalServerError)
 		return
@@ -79,7 +79,7 @@ func HandleCreate(w http.ResponseWriter, r *http.Request) {
 
 	partition, err := strconv.Atoi(partitionStr)
 	if err != nil || partition < 0 {
-		http.Error(w, "Invalid partition query param value", http.StatusBadRequest)
+		http.Error(w, "invalid partition query param value", http.StatusBadRequest)
 		return
 	}
 
