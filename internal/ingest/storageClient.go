@@ -21,7 +21,9 @@ type StorageClient struct {
 	partition int
 }
 
-func (node StorageClient) Append(log LogEntry) error {
+func (node *StorageClient) Append(partition int, log LogEntry) error {
+	node.partition = partition
+
 	payload, err := json.Marshal([]LogEntry{log})
 	if err != nil {
 		return err
@@ -54,7 +56,9 @@ func (node StorageClient) Append(log LogEntry) error {
 	return nil
 }
 
-func (node StorageClient) Read(limit int) ([]LogEntry, error) {
+func (node *StorageClient) Read(partition int, limit int) ([]LogEntry, error) {
+	node.partition = partition
+
 	if limit < 0 {
 		return nil, fmt.Errorf("invalid value for limit query param")
 	}

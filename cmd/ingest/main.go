@@ -9,8 +9,12 @@ import (
 )
 
 func main() {
-	http.HandleFunc("/v1/logs", ingest.HandleCreate)
-	http.HandleFunc("/v1/query", ingest.HandleQuery)
+	storage := &ingest.StorageClient{}
+	service := ingest.NewService(storage)
+	handler := ingest.NewHandler(service)
+
+	http.HandleFunc("/v1/logs", handler.HandleCreate)
+	http.HandleFunc("/v1/query", handler.HandleQuery)
 
 	fmt.Println("Server listening on 8080")
 	log.Fatal(http.ListenAndServe(":8080", nil))

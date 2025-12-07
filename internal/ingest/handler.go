@@ -7,7 +7,6 @@ import (
 	"net"
 	"net/http"
 	"strconv"
-	"time"
 )
 
 const partitionCount = 4
@@ -31,7 +30,15 @@ type IngestResponse struct {
 	Received int `json:"received"`
 }
 
-func HandleCreate(w http.ResponseWriter, r *http.Request) {
+type Handler struct {
+	service *Service
+}
+
+func NewHandler(service *Service) *Handler {
+	return &Handler{service: service}
+}
+
+func (h *Handler) HandleCreate(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
@@ -50,39 +57,30 @@ func HandleCreate(w http.ResponseWriter, r *http.Request) {
 	}
 
 	clientIP := clientIPFromRequest(r)
-	enrichedLogs := make([]LogEntry, 0, len(incomingLogs))
 
-	for _, incomingLog := range incomingLogs {
-		enriched := enrich(incomingLog, clientIP)
-		enrichedLogs = append(enrichedLogs, enriched)
+	logs, err := h.service.Ingest(incomingLogs, clientIP)
+	if err != nil {
+		http.Error(w, "error at ingest node: "+err.Error(), http.StatusBadRequest)
+		return
 	}
 
-	for _, log := range enrichedLogs {
-		partition := partitionForKey(log.Service)
-
-		storageNode := StorageClient{partition: partition}
-
-		err := storageNode.Append(log)
-		if err != nil {
-			fmt.Println("Error: ", err)
-		}
-
+	for _, log := range logs {
 		fmt.Println(
 			"[INGEST/CREATE]",
 			"client_ip=", log.ClientIP,
 			"received_at=", log.ReceivedAt,
 			"service=", log.Service,
 			"msg=", log.Message,
-			"partition=", storageNode.partition,
-			"node=", storageNode.URL(),
+			"partition=", h.service.storage.partition,
+			"node=", h.service.storage.URL(),
 		)
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(IngestResponse{Received: len(enrichedLogs)})
+	json.NewEncoder(w).Encode(IngestResponse{Received: len(logs)})
 }
 
-func HandleQuery(w http.ResponseWriter, r *http.Request) {
+func (h *Handler) HandleQuery(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
@@ -99,10 +97,7 @@ func HandleQuery(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	partition := partitionForKey(service)
-	storageNode := StorageClient{partition: partition}
-
-	logs, err := storageNode.Read(limit)
+	logs, err := h.service.Query(service, limit)
 	if err != nil {
 		http.Error(w, "Error reading from storage node", http.StatusBadRequest)
 		return
@@ -113,15 +108,6 @@ func HandleQuery(w http.ResponseWriter, r *http.Request) {
 	if err := json.NewEncoder(w).Encode(logs); err != nil {
 		http.Error(w, "failed to encode response", http.StatusInternalServerError)
 		return
-	}
-}
-
-func enrich(incomingLog IncomingLogBody, clientIP string) LogEntry {
-	return LogEntry{
-		IncomingLogBody: incomingLog,
-		ReceivedAt:      time.Now().UnixMilli(),
-		IngestedNodeId:  "id-string-1",
-		ClientIP:        clientIP,
 	}
 }
 
