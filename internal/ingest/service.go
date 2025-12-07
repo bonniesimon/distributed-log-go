@@ -18,8 +18,6 @@ func NewService(storage *StorageClient) *Service {
 func (s *Service) Ingest(logs []IncomingLogBody, clientIP string) error {
 	partitionedLogs := make(map[int][]LogEntry)
 
-	var errs []error
-
 	for _, incomingLog := range logs {
 		enriched := enrich(incomingLog, clientIP)
 
@@ -27,6 +25,7 @@ func (s *Service) Ingest(logs []IncomingLogBody, clientIP string) error {
 		partitionedLogs[partition] = append(partitionedLogs[partition], enriched)
 	}
 
+	// IMPROVEMENT: Use errgroup instead of using waitgroup and channels
 	var wg sync.WaitGroup
 	errChannel := make(chan error, len(partitionedLogs))
 
@@ -47,6 +46,7 @@ func (s *Service) Ingest(logs []IncomingLogBody, clientIP string) error {
 	wg.Wait()
 	close(errChannel)
 
+	var errs []error
 	for err := range errChannel {
 		errs = append(errs, err)
 	}
