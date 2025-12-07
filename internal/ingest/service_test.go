@@ -133,6 +133,42 @@ func TestServiceIngest(t *testing.T) {
 	}
 }
 
+func TestServiceIngest_StorageError(t *testing.T) {
+	mockStorage := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+	defer mockStorage.Close()
+
+	// Point all partitions to mock server
+	originalURLs := make(map[int]string)
+	for k, v := range StorageNodeURLs {
+		originalURLs[k] = v
+		StorageNodeURLs[k] = mockStorage.URL
+	}
+	defer func() {
+		for k, v := range originalURLs {
+			StorageNodeURLs[k] = v
+		}
+	}()
+
+	storage := NewStorageClient()
+	service := NewService(storage)
+
+	incomingLogs := []IncomingLogBody{
+		{
+			Timestamp: 1234567890,
+			Service:   "test-service",
+			Message:   "test message",
+		},
+	}
+
+	err := service.Ingest(incomingLogs, "10.0.0.1")
+
+	if err == nil {
+		t.Error("expected error when storage fails, got nil")
+	}
+}
+
 func TestServiceQuery(t *testing.T) {
 	mockLogs := []LogEntry{
 		{

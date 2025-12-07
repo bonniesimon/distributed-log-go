@@ -1,6 +1,7 @@
 package ingest
 
 import (
+	"errors"
 	"fmt"
 	"time"
 )
@@ -16,6 +17,8 @@ func NewService(storage *StorageClient) *Service {
 func (s *Service) Ingest(logs []IncomingLogBody, clientIP string) error {
 	partitionedLogs := make(map[int][]LogEntry)
 
+	var errs []error
+
 	for _, incomingLog := range logs {
 		enriched := enrich(incomingLog, clientIP)
 
@@ -26,12 +29,13 @@ func (s *Service) Ingest(logs []IncomingLogBody, clientIP string) error {
 	for partition, logs := range partitionedLogs {
 		err := s.storage.Append(partition, logs)
 		if err != nil {
-			fmt.Println("Error: ", err)
+			errs = append(errs, fmt.Errorf("failed to append to partition %d: %w", partition, err))
+			continue
 		}
 		logsPrint(partition, logs)
 	}
 
-	return nil
+	return errors.Join(errs...)
 }
 
 func (s *Service) Query(service string, limit int) ([]LogEntry, error) {
