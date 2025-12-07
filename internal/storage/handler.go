@@ -1,18 +1,19 @@
 package storage
 
 import (
-	"bufio"
 	"encoding/json"
 	"fmt"
 	"net/http"
-	"os"
-	"path/filepath"
 	"strconv"
 )
 
-// BaseLogDir is the base directory for partition log files.
-// This can be overridden for testing.
-var BaseLogDir = "tmp"
+type Handler struct {
+	service *Service
+}
+
+func NewHandler(s *Service) *Handler {
+	return &Handler{service: s}
+}
 
 type LogEntry struct {
 	Timestamp      uint64            `json:"timestamp"`
@@ -25,7 +26,7 @@ type LogEntry struct {
 	ClientIP       string            `json:"client_ip"`
 }
 
-func HandleRead(w http.ResponseWriter, r *http.Request) {
+func (h *Handler) HandleRead(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "method not allowed", http.StatusBadRequest)
 		return
@@ -45,10 +46,9 @@ func HandleRead(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	partitionFilePath := partitionLogFilePath(partition)
-	logs, err := readLogFromPartition(partitionFilePath, limit)
+	logs, err := h.service.Read(partition, limit)
 	if err != nil {
-		http.Error(w, fmt.Sprint("error reading log file: ", err), http.StatusBadRequest)
+		http.Error(w, fmt.Sprint("error reading from storage file", err), http.StatusBadRequest)
 		return
 	}
 
@@ -57,6 +57,7 @@ func HandleRead(w http.ResponseWriter, r *http.Request) {
 		"partition=", partition,
 		"limit=", limit,
 	)
+
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
 	if err := json.NewEncoder(w).Encode(logs); err != nil {
@@ -65,7 +66,7 @@ func HandleRead(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func HandleCreate(w http.ResponseWriter, r *http.Request) {
+func (h *Handler) HandleCreate(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
@@ -96,80 +97,12 @@ func HandleCreate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	for _, log := range logs {
-		logPrint(log, partition)
-
-		filePath := partitionLogFilePath(partition)
-		err = writeLogToPartition(filePath, log)
-		if err != nil {
-			fmt.Println("Error: ", err)
-		}
+	err = h.service.Store(partition, logs)
+	if err != nil {
+		http.Error(w, "storing logs failed", http.StatusBadRequest)
+		return
 	}
 
 	w.WriteHeader(http.StatusOK)
 	w.Write([]byte("ok"))
-}
-
-func writeLogToPartition(partitionFilePath string, log LogEntry) error {
-	f, err := os.OpenFile(partitionFilePath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
-	if err != nil {
-		return err
-	}
-
-	defer f.Close()
-
-	enc := json.NewEncoder(f)
-	return enc.Encode(log)
-}
-
-func readLogFromPartition(partitionFilePath string, limit int) ([]LogEntry, error) {
-	f, err := os.Open(partitionFilePath)
-	if err != nil {
-		return nil, err
-	}
-	defer f.Close()
-
-	scanner := bufio.NewScanner(f)
-
-	var all []LogEntry
-	for scanner.Scan() {
-		line := scanner.Bytes()
-
-		if len(line) == 0 {
-			continue
-		}
-
-		var log LogEntry
-
-		if err := json.Unmarshal(line, &log); err != nil {
-			continue
-		}
-
-		all = append(all, log)
-	}
-
-	if err := scanner.Err(); err != nil {
-		return nil, err
-	}
-
-	if len(all) > limit {
-		all = all[len(all)-limit:]
-	}
-
-	return all, nil
-}
-
-func partitionLogFilePath(partition int) string {
-	return filepath.Join(BaseLogDir, fmt.Sprintf("partition-%d.log", partition))
-}
-
-func logPrint(log LogEntry, partition int) {
-	fmt.Println(
-		"[STORAGE/CREATE]",
-		"partition=", partition,
-		"client_ip=", log.ClientIP,
-		"received_at=", log.ReceivedAt,
-		"service=", log.Service,
-		"msg=", log.Message,
-	)
 }

@@ -10,12 +10,31 @@ import (
 	"testing"
 )
 
-func TestHandleCreate(t *testing.T) {
-	// Setup temp directory
+// setupHandler creates the handler with all dependencies for testing
+func setupHandler() *Handler {
+	service := &Service{}
+	return NewHandler(service)
+}
+
+// setupTempDir creates a temp directory and overrides BaseLogDir for testing
+// Returns a cleanup function that should be deferred
+func setupTempDir(t *testing.T) (string, func()) {
 	tmpDir := t.TempDir()
 	originalBaseLogDir := BaseLogDir
 	BaseLogDir = tmpDir
-	defer func() { BaseLogDir = originalBaseLogDir }()
+
+	cleanup := func() {
+		BaseLogDir = originalBaseLogDir
+	}
+
+	return tmpDir, cleanup
+}
+
+func TestHandleCreate(t *testing.T) {
+	tmpDir, cleanup := setupTempDir(t)
+	defer cleanup()
+
+	handler := setupHandler()
 
 	logs := []LogEntry{
 		{
@@ -30,7 +49,7 @@ func TestHandleCreate(t *testing.T) {
 	req := httptest.NewRequest(http.MethodPost, "/v1/storage?partition=0", bytes.NewReader(body))
 	w := httptest.NewRecorder()
 
-	HandleCreate(w, req)
+	handler.HandleCreate(w, req)
 
 	if w.Code != http.StatusOK {
 		t.Errorf("expected status 200, got %d", w.Code)
@@ -44,10 +63,15 @@ func TestHandleCreate(t *testing.T) {
 }
 
 func TestHandleCreate_InvalidMethod(t *testing.T) {
+	_, cleanup := setupTempDir(t)
+	defer cleanup()
+
+	handler := setupHandler()
+
 	req := httptest.NewRequest(http.MethodGet, "/v1/storage?partition=0", nil)
 	w := httptest.NewRecorder()
 
-	HandleCreate(w, req)
+	handler.HandleCreate(w, req)
 
 	if w.Code != http.StatusMethodNotAllowed {
 		t.Errorf("expected status 405, got %d", w.Code)
@@ -55,11 +79,16 @@ func TestHandleCreate_InvalidMethod(t *testing.T) {
 }
 
 func TestHandleCreate_MissingPartition(t *testing.T) {
+	_, cleanup := setupTempDir(t)
+	defer cleanup()
+
+	handler := setupHandler()
+
 	body, _ := json.Marshal([]LogEntry{{Message: "test"}})
 	req := httptest.NewRequest(http.MethodPost, "/v1/storage", bytes.NewReader(body))
 	w := httptest.NewRecorder()
 
-	HandleCreate(w, req)
+	handler.HandleCreate(w, req)
 
 	if w.Code != http.StatusBadRequest {
 		t.Errorf("expected status 400, got %d", w.Code)
@@ -67,11 +96,16 @@ func TestHandleCreate_MissingPartition(t *testing.T) {
 }
 
 func TestHandleCreate_EmptyBody(t *testing.T) {
+	_, cleanup := setupTempDir(t)
+	defer cleanup()
+
+	handler := setupHandler()
+
 	body, _ := json.Marshal([]LogEntry{})
 	req := httptest.NewRequest(http.MethodPost, "/v1/storage?partition=0", bytes.NewReader(body))
 	w := httptest.NewRecorder()
 
-	HandleCreate(w, req)
+	handler.HandleCreate(w, req)
 
 	if w.Code != http.StatusBadRequest {
 		t.Errorf("expected status 400, got %d", w.Code)
@@ -79,11 +113,8 @@ func TestHandleCreate_EmptyBody(t *testing.T) {
 }
 
 func TestHandleRead(t *testing.T) {
-	// Setup temp directory with test data
-	tmpDir := t.TempDir()
-	originalBaseLogDir := BaseLogDir
-	BaseLogDir = tmpDir
-	defer func() { BaseLogDir = originalBaseLogDir }()
+	tmpDir, cleanup := setupTempDir(t)
+	defer cleanup()
 
 	// Create test log file
 	testLog := LogEntry{
@@ -96,10 +127,12 @@ func TestHandleRead(t *testing.T) {
 	json.NewEncoder(f).Encode(testLog)
 	f.Close()
 
+	handler := setupHandler()
+
 	req := httptest.NewRequest(http.MethodGet, "/v1/storage?partition=0&limit=10", nil)
 	w := httptest.NewRecorder()
 
-	HandleRead(w, req)
+	handler.HandleRead(w, req)
 
 	if w.Code != http.StatusOK {
 		t.Errorf("expected status 200, got %d", w.Code)
@@ -117,10 +150,15 @@ func TestHandleRead(t *testing.T) {
 }
 
 func TestHandleRead_InvalidPartition(t *testing.T) {
+	_, cleanup := setupTempDir(t)
+	defer cleanup()
+
+	handler := setupHandler()
+
 	req := httptest.NewRequest(http.MethodGet, "/v1/storage?partition=abc&limit=10", nil)
 	w := httptest.NewRecorder()
 
-	HandleRead(w, req)
+	handler.HandleRead(w, req)
 
 	if w.Code != http.StatusBadRequest {
 		t.Errorf("expected status 400, got %d", w.Code)
@@ -128,10 +166,63 @@ func TestHandleRead_InvalidPartition(t *testing.T) {
 }
 
 func TestHandleRead_InvalidMethod(t *testing.T) {
+	_, cleanup := setupTempDir(t)
+	defer cleanup()
+
+	handler := setupHandler()
+
 	req := httptest.NewRequest(http.MethodPost, "/v1/storage?partition=0&limit=10", nil)
 	w := httptest.NewRecorder()
 
-	HandleRead(w, req)
+	handler.HandleRead(w, req)
+
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("expected status 400, got %d", w.Code)
+	}
+}
+
+func TestHandleRead_InvalidLimit(t *testing.T) {
+	_, cleanup := setupTempDir(t)
+	defer cleanup()
+
+	handler := setupHandler()
+
+	req := httptest.NewRequest(http.MethodGet, "/v1/storage?partition=0&limit=abc", nil)
+	w := httptest.NewRecorder()
+
+	handler.HandleRead(w, req)
+
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("expected status 400, got %d", w.Code)
+	}
+}
+
+func TestHandleRead_NegativePartition(t *testing.T) {
+	_, cleanup := setupTempDir(t)
+	defer cleanup()
+
+	handler := setupHandler()
+
+	req := httptest.NewRequest(http.MethodGet, "/v1/storage?partition=-1&limit=10", nil)
+	w := httptest.NewRecorder()
+
+	handler.HandleRead(w, req)
+
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("expected status 400, got %d", w.Code)
+	}
+}
+
+func TestHandleRead_NegativeLimit(t *testing.T) {
+	_, cleanup := setupTempDir(t)
+	defer cleanup()
+
+	handler := setupHandler()
+
+	req := httptest.NewRequest(http.MethodGet, "/v1/storage?partition=0&limit=-5", nil)
+	w := httptest.NewRecorder()
+
+	handler.HandleRead(w, req)
 
 	if w.Code != http.StatusBadRequest {
 		t.Errorf("expected status 400, got %d", w.Code)
