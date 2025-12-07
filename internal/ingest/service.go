@@ -13,12 +13,9 @@ func NewService(storage *StorageClient) *Service {
 	return &Service{storage: storage}
 }
 
-func (s *Service) Ingest(logs []IncomingLogBody, clientIP string) ([]LogEntry, error) {
-	enrichedLogs := make([]LogEntry, 0, len(logs))
-
+func (s *Service) Ingest(logs []IncomingLogBody, clientIP string) error {
 	for _, incomingLog := range logs {
 		enriched := enrich(incomingLog, clientIP)
-		enrichedLogs = append(enrichedLogs, enriched)
 
 		partition := partitionForKey(enriched.Service)
 
@@ -27,9 +24,17 @@ func (s *Service) Ingest(logs []IncomingLogBody, clientIP string) ([]LogEntry, e
 			fmt.Println("Error: ", err)
 		}
 
+		fmt.Println(
+			"[INGEST/CREATE]",
+			"client_ip=", enriched.ClientIP,
+			"received_at=", enriched.ReceivedAt,
+			"service=", enriched.Service,
+			"msg=", enriched.Message,
+			"partition=", partition,
+		)
 	}
 
-	return enrichedLogs, nil
+	return nil
 }
 
 func (s *Service) Query(service string, limit int) ([]LogEntry, error) {

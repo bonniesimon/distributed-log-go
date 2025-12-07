@@ -17,19 +17,15 @@ var StorageNodeURLs = map[int]string{
 	3: "http://localhost:8082",
 }
 
-type StorageClient struct {
-	partition int
-}
+type StorageClient struct{}
 
 func (node *StorageClient) Append(partition int, log LogEntry) error {
-	node.partition = partition
-
 	payload, err := json.Marshal([]LogEntry{log})
 	if err != nil {
 		return err
 	}
 
-	url := node.URL() + "/v1/storage?partition=" + strconv.Itoa(node.partition)
+	url := node.URL(partition) + "/v1/storage?partition=" + strconv.Itoa(partition)
 	req, err := http.NewRequest(http.MethodPost, url, bytes.NewReader(payload))
 	if err != nil {
 		return err
@@ -57,13 +53,11 @@ func (node *StorageClient) Append(partition int, log LogEntry) error {
 }
 
 func (node *StorageClient) Read(partition int, limit int) ([]LogEntry, error) {
-	node.partition = partition
-
 	if limit < 0 {
 		return nil, fmt.Errorf("invalid value for limit query param")
 	}
 
-	url := node.URL() + "/v1/read?partition=" + strconv.Itoa(node.partition) + "&limit=" + strconv.Itoa(limit)
+	url := node.URL(partition) + "/v1/read?partition=" + strconv.Itoa(partition) + "&limit=" + strconv.Itoa(limit)
 	response, err := http.Get(url)
 	if err != nil {
 		return nil, err
@@ -84,8 +78,8 @@ func (node *StorageClient) Read(partition int, limit int) ([]LogEntry, error) {
 	return logs, nil
 }
 
-func (node StorageClient) URL() string {
-	if url, ok := StorageNodeURLs[node.partition]; ok {
+func (node StorageClient) URL(partition int) string {
+	if url, ok := StorageNodeURLs[partition]; ok {
 		return url
 	}
 	return "http://localhost:8081"

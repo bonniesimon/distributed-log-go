@@ -58,26 +58,14 @@ func (h *Handler) HandleCreate(w http.ResponseWriter, r *http.Request) {
 
 	clientIP := clientIPFromRequest(r)
 
-	logs, err := h.service.Ingest(incomingLogs, clientIP)
+	err := h.service.Ingest(incomingLogs, clientIP)
 	if err != nil {
 		http.Error(w, "error at ingest node: "+err.Error(), http.StatusBadRequest)
 		return
 	}
 
-	for _, log := range logs {
-		fmt.Println(
-			"[INGEST/CREATE]",
-			"client_ip=", log.ClientIP,
-			"received_at=", log.ReceivedAt,
-			"service=", log.Service,
-			"msg=", log.Message,
-			"partition=", h.service.storage.partition,
-			"node=", h.service.storage.URL(),
-		)
-	}
-
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(IngestResponse{Received: len(logs)})
+	json.NewEncoder(w).Encode(IngestResponse{Received: len(incomingLogs)})
 }
 
 func (h *Handler) HandleQuery(w http.ResponseWriter, r *http.Request) {
