@@ -32,7 +32,14 @@ func (s *Service) Ingest(logs []IncomingLogBody, clientIP string) error {
 
 	for partition, logs := range partitionedLogs {
 		wg.Add(1)
-		go s.sendAppendRequest(&wg, errChannel, partition, logs)
+		go func() {
+			defer wg.Done()
+
+			err := s.storage.Append(partition, logs)
+			if err != nil {
+				errChannel <- fmt.Errorf("failed to append to partition %d: %w", partition, err)
+			}
+		}()
 
 		logsPrint(partition, logs)
 	}
@@ -55,15 +62,6 @@ func (s *Service) Query(service string, limit int) ([]LogEntry, error) {
 	}
 
 	return logs, nil
-}
-
-func (s *Service) sendAppendRequest(wg *sync.WaitGroup, errChannel chan error, partition int, logs []LogEntry) {
-	defer wg.Done()
-
-	err := s.storage.Append(partition, logs)
-	if err != nil {
-		errChannel <- fmt.Errorf("failed to append to partition %d: %w", partition, err)
-	}
 }
 
 func enrich(incomingLog IncomingLogBody, clientIP string) LogEntry {
