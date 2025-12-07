@@ -9,7 +9,7 @@ import (
 )
 
 func main() {
-	storage := &ingest.StorageClient{}
+	storage := ingest.NewStorageClient()
 	service := ingest.NewService(storage)
 	handler := ingest.NewHandler(service)
 

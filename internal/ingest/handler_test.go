@@ -10,7 +10,7 @@ import (
 
 // setupHandler creates the handler with all dependencies for testing
 func setupHandler() *Handler {
-	storage := &StorageClient{}
+	storage := NewStorageClient()
 	service := NewService(storage)
 	return NewHandler(service)
 }

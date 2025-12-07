@@ -17,10 +17,18 @@ var StorageNodeURLs = map[int]string{
 	3: "http://localhost:8082",
 }
 
-type StorageClient struct{}
+type StorageClient struct {
+	client *http.Client
+}
 
-func (node *StorageClient) Append(partition int, log LogEntry) error {
-	payload, err := json.Marshal([]LogEntry{log})
+func NewStorageClient() *StorageClient {
+	return &StorageClient{
+		client: &http.Client{},
+	}
+}
+
+func (node *StorageClient) Append(partition int, logs []LogEntry) error {
+	payload, err := json.Marshal(logs)
 	if err != nil {
 		return err
 	}
@@ -33,12 +41,7 @@ func (node *StorageClient) Append(partition int, log LogEntry) error {
 
 	req.Header.Set("Content-Type", "application/json")
 
-	// TODO: Creating &http.Client{} on every Append() call is inefficient. Consider a package-level client:
-	// Can move http.Client to StorageNode stuct.
-	// Or I can simply use the http.Post thingy
-	client := &http.Client{}
-
-	response, err := client.Do(req)
+	response, err := node.client.Do(req)
 	if err != nil {
 		return err
 	}

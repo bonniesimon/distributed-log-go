@@ -100,7 +100,7 @@ func TestServiceIngest(t *testing.T) {
 		}
 	}()
 
-	storage := &StorageClient{}
+	storage := NewStorageClient()
 	service := NewService(storage)
 
 	incomingLogs := []IncomingLogBody{

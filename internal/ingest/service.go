@@ -14,24 +14,21 @@ func NewService(storage *StorageClient) *Service {
 }
 
 func (s *Service) Ingest(logs []IncomingLogBody, clientIP string) error {
+	partitionedLogs := make(map[int][]LogEntry)
+
 	for _, incomingLog := range logs {
 		enriched := enrich(incomingLog, clientIP)
 
 		partition := partitionForKey(enriched.Service)
+		partitionedLogs[partition] = append(partitionedLogs[partition], enriched)
+	}
 
-		err := s.storage.Append(partition, enriched)
+	for partition, logs := range partitionedLogs {
+		err := s.storage.Append(partition, logs)
 		if err != nil {
 			fmt.Println("Error: ", err)
 		}
-
-		fmt.Println(
-			"[INGEST/CREATE]",
-			"client_ip=", enriched.ClientIP,
-			"received_at=", enriched.ReceivedAt,
-			"service=", enriched.Service,
-			"msg=", enriched.Message,
-			"partition=", partition,
-		)
+		logsPrint(partition, logs)
 	}
 
 	return nil
@@ -53,5 +50,18 @@ func enrich(incomingLog IncomingLogBody, clientIP string) LogEntry {
 		ReceivedAt:      time.Now().UnixMilli(),
 		IngestedNodeId:  "id-string-1",
 		ClientIP:        clientIP,
+	}
+}
+
+func logsPrint(partition int, logs []LogEntry) {
+	for _, log := range logs {
+		fmt.Println(
+			"[INGEST/CREATE]",
+			"client_ip=", log.ClientIP,
+			"received_at=", log.ReceivedAt,
+			"service=", log.Service,
+			"msg=", log.Message,
+			"partition=", partition,
+		)
 	}
 }
