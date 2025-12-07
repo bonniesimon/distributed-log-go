@@ -3,6 +3,7 @@ package ingest
 import (
 	"errors"
 	"fmt"
+	"sync"
 	"time"
 )
 
@@ -26,13 +27,21 @@ func (s *Service) Ingest(logs []IncomingLogBody, clientIP string) error {
 		partitionedLogs[partition] = append(partitionedLogs[partition], enriched)
 	}
 
+	var wg sync.WaitGroup
+	errChannel := make(chan error, len(partitionedLogs))
+
 	for partition, logs := range partitionedLogs {
-		err := s.storage.Append(partition, logs)
-		if err != nil {
-			errs = append(errs, fmt.Errorf("failed to append to partition %d: %w", partition, err))
-			continue
-		}
+		wg.Add(1)
+		go s.sendAppendRequest(&wg, errChannel, partition, logs)
+
 		logsPrint(partition, logs)
+	}
+
+	wg.Wait()
+	close(errChannel)
+
+	for err := range errChannel {
+		errs = append(errs, err)
 	}
 
 	return errors.Join(errs...)
@@ -46,6 +55,15 @@ func (s *Service) Query(service string, limit int) ([]LogEntry, error) {
 	}
 
 	return logs, nil
+}
+
+func (s *Service) sendAppendRequest(wg *sync.WaitGroup, errChannel chan error, partition int, logs []LogEntry) {
+	defer wg.Done()
+
+	err := s.storage.Append(partition, logs)
+	if err != nil {
+		errChannel <- fmt.Errorf("failed to append to partition %d: %w", partition, err)
+	}
 }
 
 func enrich(incomingLog IncomingLogBody, clientIP string) LogEntry {

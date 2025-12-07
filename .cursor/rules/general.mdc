@@ -1,0 +1,5 @@
+---
+alwaysApply: true
+---
+
+- Always make sure to follow idiomatic code. If the code doesn't following idiomatic go, then call it out.

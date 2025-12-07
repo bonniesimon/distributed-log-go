@@ -81,6 +81,7 @@ A distributed log ingestion system inspired by Kafka and Loki. Logs flow through
 | Service Discovery — Replace hardcoded URLs with Consul/etcd/gossip (memberlist)           | Cluster membership, health checks, dynamic routing             |
 | Horizontal Ingest Scaling — Stateless ingest behind Envoy/Nginx load balancer             | Production deployment patterns, load balancing                 |
 | **Backend Engineering**                                                                   |                                                                |
+| Node-Based Batching — Batch logs by storage node URL instead of per-log forwarding        | Network efficiency, reduced TCP overhead, throughput optimization |
 | Backpressure — Bounded channel buffer, reject/delay on overflow, measure queue depth      | Concurrency patterns, load shedding, bounded memory            |
 | Exponential Backoff + Jitter — Structured retry with deadlines per forwarding attempt     | Failure handling, reliability patterns                         |
 | Ingest-Local WAL — Persist to local WAL when storage is down, background replay           | Crash recovery, exactly-once delivery, Fluentd/Vector patterns |
