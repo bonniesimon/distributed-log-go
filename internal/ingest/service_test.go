@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"sync"
 	"testing"
 )
 
@@ -79,10 +80,13 @@ func TestEnrich(t *testing.T) {
 
 func TestServiceIngest(t *testing.T) {
 	var receivedLogs []LogEntry
+	var mu sync.Mutex
 	mockStorage := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		var logs []LogEntry
 		json.NewDecoder(r.Body).Decode(&logs)
+		mu.Lock()
 		receivedLogs = append(receivedLogs, logs...)
+		mu.Unlock()
 		w.WriteHeader(http.StatusOK)
 		w.Write([]byte("ok"))
 	}))

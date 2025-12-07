@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"sync"
 	"testing"
 )
 
@@ -38,10 +39,13 @@ func setupMockStorage(handler http.HandlerFunc) (*httptest.Server, func()) {
 
 func TestHandleCreate(t *testing.T) {
 	var receivedLogs []LogEntry
+	var mu sync.Mutex
 	_, cleanup := setupMockStorage(func(w http.ResponseWriter, r *http.Request) {
 		var logs []LogEntry
 		json.NewDecoder(r.Body).Decode(&logs)
+		mu.Lock()
 		receivedLogs = append(receivedLogs, logs...)
+		mu.Unlock()
 		w.WriteHeader(http.StatusOK)
 		w.Write([]byte("ok"))
 	})
