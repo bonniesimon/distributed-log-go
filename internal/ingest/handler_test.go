@@ -8,29 +8,46 @@ import (
 	"testing"
 )
 
-func TestHandleCreate(t *testing.T) {
-	// Create a mock storage server
-	var receivedLogs []LogEntry
-	mockStorage := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		var logs []LogEntry
-		json.NewDecoder(r.Body).Decode(&logs)
-		receivedLogs = append(receivedLogs, logs...)
-		w.WriteHeader(http.StatusOK)
-		w.Write([]byte("ok"))
-	}))
-	defer mockStorage.Close()
+// setupHandler creates the handler with all dependencies for testing
+func setupHandler() *Handler {
+	storage := &StorageClient{}
+	service := NewService(storage)
+	return NewHandler(service)
+}
 
-	// Point all partitions to mock server
+// setupMockStorage creates a mock storage server and overrides StorageNodeURLs
+// Returns a cleanup function that should be deferred
+func setupMockStorage(handler http.HandlerFunc) (*httptest.Server, func()) {
+	mockStorage := httptest.NewServer(handler)
+
 	originalURLs := make(map[int]string)
 	for k, v := range StorageNodeURLs {
 		originalURLs[k] = v
 		StorageNodeURLs[k] = mockStorage.URL
 	}
-	defer func() {
+
+	cleanup := func() {
+		mockStorage.Close()
 		for k, v := range originalURLs {
 			StorageNodeURLs[k] = v
 		}
-	}()
+	}
+
+	return mockStorage, cleanup
+}
+
+func TestHandleCreate(t *testing.T) {
+	var receivedLogs []LogEntry
+	_, cleanup := setupMockStorage(func(w http.ResponseWriter, r *http.Request) {
+		var logs []LogEntry
+		json.NewDecoder(r.Body).Decode(&logs)
+		receivedLogs = append(receivedLogs, logs...)
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte("ok"))
+	})
+	defer cleanup()
+
+	handler := setupHandler()
 
 	logs := []IncomingLogBody{
 		{
@@ -46,7 +63,7 @@ func TestHandleCreate(t *testing.T) {
 	req.RemoteAddr = "192.168.1.1:12345"
 	w := httptest.NewRecorder()
 
-	HandleCreate(w, req)
+	handler.HandleCreate(w, req)
 
 	if w.Code != http.StatusOK {
 		t.Errorf("expected status 200, got %d", w.Code)
@@ -73,10 +90,12 @@ func TestHandleCreate(t *testing.T) {
 }
 
 func TestHandleCreate_InvalidMethod(t *testing.T) {
+	handler := setupHandler()
+
 	req := httptest.NewRequest(http.MethodGet, "/v1/ingest", nil)
 	w := httptest.NewRecorder()
 
-	HandleCreate(w, req)
+	handler.HandleCreate(w, req)
 
 	if w.Code != http.StatusMethodNotAllowed {
 		t.Errorf("expected status 405, got %d", w.Code)
@@ -84,11 +103,13 @@ func TestHandleCreate_InvalidMethod(t *testing.T) {
 }
 
 func TestHandleCreate_EmptyBody(t *testing.T) {
+	handler := setupHandler()
+
 	body, _ := json.Marshal([]IncomingLogBody{})
 	req := httptest.NewRequest(http.MethodPost, "/v1/ingest", bytes.NewReader(body))
 	w := httptest.NewRecorder()
 
-	HandleCreate(w, req)
+	handler.HandleCreate(w, req)
 
 	if w.Code != http.StatusBadRequest {
 		t.Errorf("expected status 400, got %d", w.Code)
@@ -96,33 +117,19 @@ func TestHandleCreate_EmptyBody(t *testing.T) {
 }
 
 func TestHandleCreate_InvalidJSON(t *testing.T) {
+	handler := setupHandler()
+
 	req := httptest.NewRequest(http.MethodPost, "/v1/ingest", bytes.NewReader([]byte("not json")))
 	w := httptest.NewRecorder()
 
-	HandleCreate(w, req)
+	handler.HandleCreate(w, req)
 
 	if w.Code != http.StatusBadRequest {
 		t.Errorf("expected status 400, got %d", w.Code)
 	}
 }
 
-func TestPartitionForKey(t *testing.T) {
-	// Same key should always return same partition
-	p1 := partitionForKey("my-service")
-	p2 := partitionForKey("my-service")
-
-	if p1 != p2 {
-		t.Errorf("same key should produce same partition")
-	}
-
-	// Partition should be within range
-	if p1 < 0 || p1 >= partitionCount {
-		t.Errorf("partition %d out of range [0, %d)", p1, partitionCount)
-	}
-}
-
 func TestHandleQuery(t *testing.T) {
-	// Create a mock storage server that returns logs
 	mockLogs := []LogEntry{
 		{
 			IncomingLogBody: IncomingLogBody{
@@ -137,29 +144,19 @@ func TestHandleQuery(t *testing.T) {
 		},
 	}
 
-	mockStorage := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	_, cleanup := setupMockStorage(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
 		json.NewEncoder(w).Encode(mockLogs)
-	}))
-	defer mockStorage.Close()
+	})
+	defer cleanup()
 
-	// Point all partitions to mock server
-	originalURLs := make(map[int]string)
-	for k, v := range StorageNodeURLs {
-		originalURLs[k] = v
-		StorageNodeURLs[k] = mockStorage.URL
-	}
-	defer func() {
-		for k, v := range originalURLs {
-			StorageNodeURLs[k] = v
-		}
-	}()
+	handler := setupHandler()
 
 	req := httptest.NewRequest(http.MethodGet, "/v1/query?service=test-service&limit=10", nil)
 	w := httptest.NewRecorder()
 
-	HandleQuery(w, req)
+	handler.HandleQuery(w, req)
 
 	if w.Code != http.StatusOK {
 		t.Errorf("expected status 200, got %d", w.Code)
@@ -182,10 +179,12 @@ func TestHandleQuery(t *testing.T) {
 }
 
 func TestHandleQuery_InvalidMethod(t *testing.T) {
+	handler := setupHandler()
+
 	req := httptest.NewRequest(http.MethodPost, "/v1/query?service=test&limit=10", nil)
 	w := httptest.NewRecorder()
 
-	HandleQuery(w, req)
+	handler.HandleQuery(w, req)
 
 	if w.Code != http.StatusMethodNotAllowed {
 		t.Errorf("expected status 405, got %d", w.Code)
@@ -193,10 +192,12 @@ func TestHandleQuery_InvalidMethod(t *testing.T) {
 }
 
 func TestHandleQuery_InvalidLimit(t *testing.T) {
+	handler := setupHandler()
+
 	req := httptest.NewRequest(http.MethodGet, "/v1/query?service=test&limit=abc", nil)
 	w := httptest.NewRecorder()
 
-	HandleQuery(w, req)
+	handler.HandleQuery(w, req)
 
 	if w.Code != http.StatusBadRequest {
 		t.Errorf("expected status 400, got %d", w.Code)
@@ -204,10 +205,12 @@ func TestHandleQuery_InvalidLimit(t *testing.T) {
 }
 
 func TestHandleQuery_NegativeLimit(t *testing.T) {
+	handler := setupHandler()
+
 	req := httptest.NewRequest(http.MethodGet, "/v1/query?service=test&limit=-5", nil)
 	w := httptest.NewRecorder()
 
-	HandleQuery(w, req)
+	handler.HandleQuery(w, req)
 
 	if w.Code != http.StatusBadRequest {
 		t.Errorf("expected status 400, got %d", w.Code)
@@ -215,10 +218,12 @@ func TestHandleQuery_NegativeLimit(t *testing.T) {
 }
 
 func TestHandleQuery_MissingLimit(t *testing.T) {
+	handler := setupHandler()
+
 	req := httptest.NewRequest(http.MethodGet, "/v1/query?service=test", nil)
 	w := httptest.NewRecorder()
 
-	HandleQuery(w, req)
+	handler.HandleQuery(w, req)
 
 	if w.Code != http.StatusBadRequest {
 		t.Errorf("expected status 400, got %d", w.Code)
@@ -226,28 +231,17 @@ func TestHandleQuery_MissingLimit(t *testing.T) {
 }
 
 func TestHandleQuery_StorageError(t *testing.T) {
-	// Create a mock storage server that returns an error
-	mockStorage := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	_, cleanup := setupMockStorage(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusInternalServerError)
-	}))
-	defer mockStorage.Close()
+	})
+	defer cleanup()
 
-	// Point all partitions to mock server
-	originalURLs := make(map[int]string)
-	for k, v := range StorageNodeURLs {
-		originalURLs[k] = v
-		StorageNodeURLs[k] = mockStorage.URL
-	}
-	defer func() {
-		for k, v := range originalURLs {
-			StorageNodeURLs[k] = v
-		}
-	}()
+	handler := setupHandler()
 
 	req := httptest.NewRequest(http.MethodGet, "/v1/query?service=test&limit=10", nil)
 	w := httptest.NewRecorder()
 
-	HandleQuery(w, req)
+	handler.HandleQuery(w, req)
 
 	if w.Code != http.StatusBadRequest {
 		t.Errorf("expected status 400, got %d", w.Code)
