@@ -60,7 +60,7 @@ func HandleCreate(w http.ResponseWriter, r *http.Request) {
 	for _, log := range enrichedLogs {
 		partition := partitionForKey(log.Service)
 
-		storageNode := StorageNode{partition: partition}
+		storageNode := StorageClient{partition: partition}
 
 		err := storageNode.Append(log)
 		if err != nil {
@@ -100,7 +100,7 @@ func HandleQuery(w http.ResponseWriter, r *http.Request) {
 	}
 
 	partition := partitionForKey(service)
-	storageNode := StorageNode{partition: partition}
+	storageNode := StorageClient{partition: partition}
 
 	logs, err := storageNode.Read(limit)
 	if err != nil {

@@ -17,11 +17,11 @@ var StorageNodeURLs = map[int]string{
 	3: "http://localhost:8082",
 }
 
-type StorageNode struct {
+type StorageClient struct {
 	partition int
 }
 
-func (node StorageNode) Append(log LogEntry) error {
+func (node StorageClient) Append(log LogEntry) error {
 	payload, err := json.Marshal([]LogEntry{log})
 	if err != nil {
 		return err
@@ -54,7 +54,7 @@ func (node StorageNode) Append(log LogEntry) error {
 	return nil
 }
 
-func (node StorageNode) Read(limit int) ([]LogEntry, error) {
+func (node StorageClient) Read(limit int) ([]LogEntry, error) {
 	if limit < 0 {
 		return nil, fmt.Errorf("invalid value for limit query param")
 	}
@@ -80,7 +80,7 @@ func (node StorageNode) Read(limit int) ([]LogEntry, error) {
 	return logs, nil
 }
 
-func (node StorageNode) URL() string {
+func (node StorageClient) URL() string {
 	if url, ok := StorageNodeURLs[node.partition]; ok {
 		return url
 	}
